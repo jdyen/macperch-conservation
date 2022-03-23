@@ -5,6 +5,8 @@ Yen JDL et al. (in prep.) Assisted gene flow and population reintroductions crit
 
 Last updated: 23/03/2022
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6378145.svg)](https://zenodo.org/badge/DOI/10.5281/zenodo.6378145.svg)
+
 
 ### Abstract
 
