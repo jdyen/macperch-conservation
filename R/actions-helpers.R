@@ -34,6 +34,13 @@ expand_actions <- function(x, climates) {
   # and what's the max at any one site?
   max_actions <- max(sapply(x, nrow))
   
+  # add empty rows so all have max_actions rows
+  below_max <- sapply(x, nrow) < max_actions
+  x[below_max] <- lapply(
+    x[below_max], 
+    function(.x, max_x) rbind(.x, matrix("none", nrow = max_x - nrow(.x), ncol = ncol(.x))), max_x = max_actions
+  )
+
   # add a "no action" option
   x <- lapply(
     x, 

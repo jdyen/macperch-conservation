@@ -22,7 +22,7 @@ calculate_simplified_temp_metrics <- function(
   average_temperature <- calculate(
     value = x,
     date = date,
-    rescale = NULL,
+    standardise = NULL,
     resolution = survey(season = 10:12)
   )$metric
   
@@ -40,139 +40,6 @@ calculate_simplified_temp_metrics <- function(
   effect
     
 }
-
-# function to calculate water temp effect on spawning
-calculate_temp_metrics <- function(
-  x, 
-  date,
-  threshold = 16,
-  nday = 15,
-  params = list(), 
-  spawning = list(), 
-  survival = TRUE
-) {
-  
-  # set default parameters
-  param_set <- list(
-    alpha = 2.7,
-    beta = 10.8,
-    loga = -16.902733,
-    logb = 1.141874
-  )
-  param_set[names(params)] <- params
-  
-  # and set default spawning period
-  spawning_set <- list(
-    month = 9:12,
-    day = c(30, 31, 30, 15 + nday)
-  )
-
-  # subset to relevant time periods (defaults to Sep-Dec15)
-  idx <- rep(FALSE, length(x))
-  for (i in seq_along(spawning_set$month)) {
-    idx <- idx | (month(date) %in% spawning_set$month[i] & day(date) <= spawning_set$day[i])
-  }
-  x <- x[idx]
-  date <- date[idx]
-  
-  # calculate water years
-  water_year <- ifelse(month(date) < 7, year(date), year(date) + 1)
-  
-  # identify consecutive days above threshold and calculate probability of spawning
-  #   and survival over first 15 days
-  metric <- tapply(
-    x,
-    water_year, 
-    calculate_temp_effect,
-    threshold = threshold, 
-    nday = nday, 
-    param = param_set, 
-    survival = survival
-  )
-  
-  # drop final year and return
-  metric[-length(metric)]
-  
-}
-
-# helper function to calculate consecutive days above threshold
-calculate_temp_effect <- function(x, threshold, nday, param, survival) {
-  
-  # use two vectors to look at consecutive days (one headless, one tailless)  
-  n <- length(x)
-  x1 <- x[seq_len(n - 1)]
-  x2 <- x[-1]
-  
-  # identify first consecutive days above threshold
-  #   (identifies first day, but line below adds 1 to start on second day)
-  start <- min(which(x1 >= threshold & x2 >= threshold))
-  
-  # identify all possible sequences between start and n that have length nday
-  idx <- lapply(
-    seq_len(n - nday - start),
-    function(i) (start + i):(start + i - 1 + nday)
-  )
-  
-  # calculate daily spawning and survival (if specified) over all
-  #   possible spawning periods from the first temperature cue
-  pdaily <- sapply(idx, calculate_daily_spawn, x = x, param = param, survival = survival)
-  
-  # calculate and return annual values
-  sum(pdaily)
-  
-}
-
-calculate_daily_spawn <- function(idx, x, param, survival) {
-  
-  # scale x with a logistic transform
-  x_scaled <- exp(param$loga + x * param$logb) / 
-    (1 + (exp(param$loga + x * param$logb)))
-  
-  # calculate the probability of spawning on day i of the period,
-  #   defined as a proportion of the total spawning period
-  effect <- pbeta(min(idx) / (length(x) - 1), param$alpha, param$beta) -
-    pbeta((min(idx) - 1) / (length(x) - 1), param$alpha, param$beta)
-  
-  # update based on survival over critical larval period if required,
-  #    otherwise return spawning probability
-  if (!survival) {
-    out <- effect
-  } else {
-    out <- effect * prod(x_scaled[idx + 1])
-  }
-  
-  # return
-  out
-  
-}
-
-# helper function to calculate consecutive days above threshold
-calculate_consecutive_max <- function(x) {
-  
-  # create and check a threshold of temperature values to check
-  thresh <- seq(min(x), max(x), length = 100)
-  if (max(diff(thresh)) > 0.5) {
-    stop("temperature threshold seems wrong, check temperature values for anomalies",
-         call. = FALSE)
-  }
-
-  # use two vectors to look at consecutive days (one headless, one tailless)  
-  n <- length(x)
-  x1 <- x[seq_len(n - 1)]
-  x2 <- x[-1]
-  
-  # check all thresholds
-  max_val <- min(thresh)
-  for (i in seq_along(thresh)) {
-    if (any(x1 > thresh[i] & x2 > thresh[i]))
-      max_val <- thresh[i]
-  }
-  
-  # return
-  max_val
-  
-}
-
 # function to calculate and return annual flow metrics
 calculate_flow_metrics <- function(x, date, rescale) {
   
@@ -180,7 +47,7 @@ calculate_flow_metrics <- function(x, date, rescale) {
   discharge_median <- calculate(
     value = x,
     date = date,
-    rescale = NULL,
+    standardise = NULL,
     resolution = survey(season = 7:18)
   )
   river_height_change <- discharge_median$metric[-1] / discharge_median$metric[-nrow(discharge_median)]
@@ -198,7 +65,7 @@ calculate_flow_metrics <- function(x, date, rescale) {
     average_daily_flow = calculate(
       value = x,
       date = date,
-      rescale = NULL,
+      standardise = NULL,
       resolution = survey(season = 7:18)
     )$metric,
     
@@ -206,7 +73,7 @@ calculate_flow_metrics <- function(x, date, rescale) {
     spawning_flow = calculate(
       value = x,
       date = date,
-      rescale = NULL,
+      standardise = NULL,
       resolution = survey(season = 11:12)
     )$metric,
     
@@ -214,14 +81,23 @@ calculate_flow_metrics <- function(x, date, rescale) {
     spawning_variability = calculate(
       value = x,
       date = date,
-      rescale = NULL,
+      standardise = NULL,
       fun = flow_variability,
       resolution = survey(season = 11:12)
     )$metric,
     
     # change in water level relative to previous year
-    river_height_change = river_height_change
+    river_height_change = river_height_change,
     
+    # calculate low-flow value
+    min_daily_flow = calculate(
+      value = x,
+      date = date,
+      fun = min,
+      standardise = NULL,
+      resolution = survey(season = 7:18)
+    )$metric
+
   )
   
   # check for NAs in spawning variability (ratio that can have zero denominator)
@@ -796,107 +672,7 @@ fill_na <- function(flow, mod, response = "value") {
 }
 
 # function to impute temperatures based on air temperature
-impute_temperature <- function(data, site, latitude, longitude, response = "value") {
-  
-  cfg_bom_http_fix <- TRUE 
-  
-  if (cfg_bom_http_fix) {
-    #Backup the options, then set the options to blank the agent for BOM call
-    op_bak <- options()
-    options(HTTPUserAgent = "")
-  }
-
-  # convert latlongs to numeric
-  site_lat_dec <- sp::char2dms(latitude) %>% as.numeric
-  site_long_dec <- sp::char2dms(longitude) %>% as.numeric
-  
-  # can check out stations by site if needed
-  site_coords <- c(site_lat_dec, site_long_dec)
-  station_list <- sweep_for_stations(latlon = site_coords)
-  
-  # choose nearest station with compatible date range
-  years_required <- range(year(data$date_formatted))
-  idx <- 1
-  start <- station_list$start[idx]
-  end <- station_list$end[idx]
-  while(start > years_required[1] | end < years_required[2]) {
-    idx <- idx + 1
-    start <- station_list$start[idx]
-    end <- station_list$end[idx]
-  }
-  
-  # but easiest to take defaults
-  station_by_site <- station_list$site[idx]
-
-  # grab relevant air temp data
-  maxtemp_data <- get_historical(stationid = station_by_site, type = "max")
-  mintemp_data <- get_historical(stationid = station_by_site, type = "min")
-  
-  # add bom data to flow data
-  data <- add_bom_data(flow = data, temp = maxtemp_data, variable = "max_temperature")
-  data <- add_bom_data(flow = data, temp = mintemp_data, variable = "min_temperature")
-
-  # add a month factor for the regression
-  data <- data %>% mutate(
-      month = month(date_formatted),
-      month_fac = factor(month)
-    )
-
-  # regression: water temp ~ air temp + factor(month)
-  idx <- is.na(data[[response]])
-  if (sum(idx) > 0) {
-    temp_lm <- lm(
-      as.formula(paste0(response, " ~ ", "max_temperature", " + month_fac")),
-      data = data
-    ) 
-    data[[response]][idx] <- predict(temp_lm, newdata = data[idx, ])
-  }
-
-  # repeat previous approach with min temp to catch missing
-  idx <- is.na(data[[response]])
-  if (sum(idx) > 0) {
-    temp_lm <- lm(
-      as.formula(paste0(response, " ~ ", "min_temperature", " + month_fac")),
-      data = data
-    ) 
-    data[[response]][idx] <- predict(temp_lm, newdata = data[idx, ])
-  }
-
-  # if still missing, use previous 5 days recursively
-  data <- fill_na_rolling(data, recursive = TRUE)
-  
-  # remove added columns
-  data <- data %>% select(
-    -month, -month_fac, -max_temperature, -min_temperature
-  )
-  
-  # check if any NAs remain, if so, use resampled
-  available <- tapply(
-    data$value,
-    year(data$date_formatted),
-    function(x) !anyNA(x)
-  )
-  if (any(!available)) {
-    data$value <- resample_discharge_internal(
-      data$value,
-      date = data$date_formatted,
-      target = as.numeric(names(available)[!available]),
-      source = as.numeric(names(available)[available])
-    )
-  }
-  
-  if (cfg_bom_http_fix) {
-    # Restore
-    options(op_bak)
-  }
-  
-  # return
-  data
-  
-}
-
-# function to impute temperatures based on air temperature
-impute_temperature_temp <- function(data, target, site, latitude, longitude, response = "value") {
+impute_temperature <- function(data, target, site, latitude, longitude, response = "value") {
   
   # add a month factor for the regression
   data <- data %>% mutate(
@@ -1155,6 +931,8 @@ extract_covar_effects <- function(
   recruit_param = -0.01,
   shift = 200, 
   survival_param = c(0.2, -0.2),
+  ctf_param = 1,
+  ctf_threshold = 3,
   ...
 ) {
   
@@ -1167,7 +945,7 @@ extract_covar_effects <- function(
   
   temp_effect <- x$temperature_effect
   
-  height_effect <- (1/(1 + exp(recruit_param * (x$river_height_change + shift))))
+  height_effect <- 0.4 + (1/(1 + exp(recruit_param * (x$river_height_change + shift))))
   
   daily_log_flow <- log(x$average_daily_flow + 0.01)
   daily_flow_effect <- exp(survival_param[1] * daily_log_flow + 
@@ -1175,12 +953,19 @@ extract_covar_effects <- function(
   daily_flow_effect[daily_flow_effect > 1] <- 1
   daily_flow_effect[daily_flow_effect < 0] <- 0
   
+  ctf_effect <- ifelse(
+    x$min_daily_flow < ctf_threshold,
+    exp(ctf_param * x$min_daily_flow) / exp(ctf_threshold * ctf_param),
+    1
+  )
+  
   # return
   list(
     average_daily_flow = daily_flow_effect,
     spawning_flow = spawning_flow_effect,
     spawning_variability = spawning_var_effect,
     river_height_change = height_effect,
+    min_daily_flow = ctf_effect,
     temperature_effect = temp_effect
   )
   

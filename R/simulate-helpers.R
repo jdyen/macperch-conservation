@@ -42,6 +42,7 @@ get_settings <- function(
   habitat = 1.5,
   genetics = 1.8,
   stocking = 20000,
+  stocking_aspirational = 40000,
   fishing = 0.1,
   broodfish = 15,
   exotic = 0.75
@@ -58,6 +59,7 @@ get_settings <- function(
     "sevens" = 1,
     "yarra" = 1.7
   )
+  # turned off boost when using top-down DD
   gen_factor <- ifelse("gene_mixing" %in% actions, genetics, gen_factor[site])
   
   exotic_factor <- 1
@@ -67,6 +69,8 @@ get_settings <- function(
   n_stocked <- 0
   if (any(grepl("stocking", actions))) 
     n_stocked <- stocking
+  if (any(grepl("stocking_aspirational", actions)))
+    n_stocked <- stocking_aspirational
   
   # add environmental water if needed
   if (any(grepl("env_water", actions)))
@@ -86,17 +90,27 @@ get_settings <- function(
   )
   
   if (!is.null(water_temperature)) {
+    # covars$temperature_effect <- calculate_temp_metrics(
+    #   x = water_temperature[[paste0("value_", climate)]],
+    #   date = water_temperature$date_formatted
+    # )
+    # # account for double-counting of egg + larval survival
+    # covars$temperature_effect <- covars$temperature_effect / (0.5 * 0.013)
+    # covars$temperature_effect <- ifelse(covars$temperature_effect > 1, 1, covars$temperature_effect) 
+    
     covars$temperature_effect <- calculate_simplified_temp_metrics(
       x = water_temperature[[paste0("value_", climate)]],
-      date = water_temperature$date_formatted
+      date = water_temperature$date_formatted,
+      bounds = c(0, 2)
     )
+    
   }
 
   # how many years are we dealing with?
   nyear <- nrow(covars)
   
   # set up angling removals as dynamic objects
-  p_capture <- ifelse("fishing_regs" %in% actions, 0, fishing)
+  p_capture <- ifelse("fishing_regulations" %in% actions, 0, fishing)
   p_capture <- ifelse(site == "sevens", 0, p_capture)
   p_capture <- rep(p_capture, nyear)
   if (site %in% c("goulburn", "king", "ovens"))
@@ -305,4 +319,133 @@ set_max_actions <- function(x, n) {
   idy <- grepl("actions", colnames(x))
   idx <- apply(x[, idy], 1, function(.x, max_n) sum(.x == "none")) >= (sum(idy) - n)
   x[idx, ]
+}
+
+# make a plot of the species summaries under two/all climate change scenarios
+plot_spp_summary <- function(x, nx = 15, clim = "1975", label = "Historical", col_pal = NULL, ...) {
+  
+  # which values do we want?
+  target1 <- paste0("emps_", clim)
+  target2 <- paste0("expected_neff_", clim)
+  
+  # reorder by relevant CC scenario  
+  x <- x[order(x[, target1], decreasing = TRUE), ]
+  
+  # set default colour palette
+  if (is.null(col_pal)) 
+    col_pal <- rev(RColorBrewer::brewer.pal(4, "Set3"))
+  
+  # pull out target rows with systems ordered according to MS
+  tmp <- as.matrix(x[seq_len(nx), c(4, 6, 5, 3, 2, 1)])
+  sys_names <- colnames(tmp)
+  rownames(tmp) <- seq_len(nx)
+  colnames(tmp) <- seq_len(ncol(tmp))
+  
+  # make a basic image plot with gridlines (green = include, red = exclude)  
+  image(t(tmp[rev(seq_len(nx)), ]), xlab = "", ylab = "", xaxt = "n", yaxt = "n", bty = "o", col = col_pal)
+  grid(nx = 6, ny = nx, col = "black", lty = 1)
+  
+  # add rank labels
+  yvals <- seq(0, 1, length = nx)
+  axis(2, at = yvals, labels = as.character(rev(seq_len(nx))), las = 1, tick = FALSE)
+  axis(2, at = c(-10, 10), labels = c("", ""), las = 1, lwd.ticks = 0)
+  mtext("Rank", side = 2, line = 2)
+  
+  # add system labels
+  legend_text <- c(
+    "mitta" = "Lake Dartmouth", 
+    "yarra" = "Yarra River",
+    "sevens" = "Seven Creeks",
+    "ovens" = "Ovens River", 
+    "king" = "King River",
+    "goulburn" = "Goulburn River"
+  )
+  axis(3, at = seq(0, 1, length = ncol(tmp)), labels = legend_text[sys_names], tick = FALSE, padj = 1)
+  axis(3, at = c(-10, 10), labels = c("", ""), las = 1, lwd.ticks = 0)
+  
+  # add EMPS/Ne values
+  values <- cbind(x[, target1][seq_len(nx)], x[, target2][seq_len(nx)])
+  text(x = 1.2, y = rev(yvals), round(values[, 1]), xpd = TRUE)
+  text(x = 1.3, y = rev(yvals), round(values[, 2]), xpd = TRUE)
+  text(x = c(1.2, 1.3), y = 1 + 0.11, c("EMPS", "Ne"), xpd = TRUE, font = 2)
+  
+  # add CC label  
+  mtext(label, side = 3, adj = 0, line = 1.6, cex = 1.2)
+  
+  # return
+  out <- NULL
+  
+}
+
+# helper function to get change in EMPS between best/do-nothing scenarios
+get_emps_change <- function(x) {
+  clims <- unique(x$climate)
+  out <- rep(NA, length(clims))
+  for (i in seq_along(clims)) {
+    xsub <- x[x$climate == clims[i], ]
+    action_tmp <- xsub[, grepl("actions", colnames(xsub))]
+    idx <- apply(action_tmp, 1, function(.x) all(.x == "none"))
+    out[i] <- max(xsub$emps) - xsub$emps[idx]
+  }
+  out
+}
+
+# helper function to get change in pr persist between best/do-nothing scenarios
+get_persist_change <- function(x) {
+  clims <- unique(x$climate)
+  out <- rep(NA, length(clims))
+  for (i in seq_along(clims)) {
+    xsub <- x[x$climate == clims[i], ]
+    action_tmp <- xsub[, grepl("actions", colnames(xsub))]
+    idx <- apply(action_tmp, 1, function(.x) all(.x == "none"))
+    out[i] <- max(xsub$persist) - xsub$persist[idx]
+  }
+  out
+}
+
+# helper function to filter species results to best/do-nothing scenarios only
+get_spp_filtered <- function(x) {
+  clims <- unique(x$climate)
+  out <- vector("list", length = length(clims))
+  for (i in seq_along(clims)) {
+    xsub <- x[x$climate == clims[i], ]
+    action_tmp <- xsub[, grepl("actions", colnames(xsub))]
+    idx <- apply(action_tmp, 1, function(.x) all(.x == "none"))
+    out[[i]] <- rbind(
+      xsub[which.max(xsub$emps), ],
+      xsub[idx, ]
+    )
+  }
+  out
+}
+
+# sort estimates of emps/persistence by persistence then EMPS
+reorder_benefit <- function(x) {
+  out <- x[order(x$climate, x$persist, x$emps, decreasing = c(FALSE, TRUE, TRUE)), ]
+  out$emps <- round(out$emps)
+  out
+}
+
+# extract best and do-nothing scenarios for each population and climate
+extract_best <- function(x) {
+  
+  clims <- unique(x$climate)
+  
+  out <- matrix(NA, nrow = 2 * length(clims), ncol = ncol(x))
+  for (i in seq_along(clims)) {
+    
+    xsub <- x[x$climate == clims[i], ]
+    
+    do_nothing <- which(apply(xsub[, grepl("actions", colnames(xsub))], 1, function(.x) all(.x == "none")))
+    best <- which(xsub$persist == max(xsub$persist))
+    if (length(best) > 1) {
+      best <- best[xsub$emps[best] == max(xsub$emps[best])]
+    }
+    
+    out[2 * (i - 1) + 1:2, ] <- as.matrix(xsub[c(do_nothing, best), ])
+    
+  }
+  
+  out
+  
 }
