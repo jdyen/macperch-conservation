@@ -5,6 +5,8 @@ Yen JDL et al. (submitted) Establishing new populations in water-secure location
 
 Last updated: 10 August 2022
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6378145.svg)](https://zenodo.org/badge/DOI/10.5281/zenodo.6378145.svg)
+
 
 ### Abstract
 
