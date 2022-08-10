@@ -34,6 +34,7 @@ set_initial <- function(adult = 500, nsim = 1, age = 1:30, adults = 3:max(age), 
 #   stocking: add x fingerlings in a given year
 get_settings <- function(
   actions,
+  date,
   discharge,
   water_temperature,
   env_water,
@@ -78,29 +79,21 @@ get_settings <- function(
   
   # and calculate flow metrics from discharge time series
   lt_median <- calculate(
-    value = discharge[[paste0("value_", climate)]],
-    date = discharge$date_formatted,
+    value = discharge,
+    date = date,
     rescale = NULL,
     resolution = baseline()
   )$metric
   covars <- calculate_flow_metrics(
-    x = discharge[[paste0("value_", climate)]],
-    date = discharge$date_formatted,
+    x = discharge,
+    date = date,
     rescale = lt_median
   )
   
   if (!is.null(water_temperature)) {
-    # covars$temperature_effect <- calculate_temp_metrics(
-    #   x = water_temperature[[paste0("value_", climate)]],
-    #   date = water_temperature$date_formatted
-    # )
-    # # account for double-counting of egg + larval survival
-    # covars$temperature_effect <- covars$temperature_effect / (0.5 * 0.013)
-    # covars$temperature_effect <- ifelse(covars$temperature_effect > 1, 1, covars$temperature_effect) 
-    
     covars$temperature_effect <- calculate_simplified_temp_metrics(
-      x = water_temperature[[paste0("value_", climate)]],
-      date = water_temperature$date_formatted,
+      x = water_temperature,
+      date = date,
       bounds = c(0, 2)
     )
     
@@ -336,7 +329,7 @@ plot_spp_summary <- function(x, nx = 15, clim = "1975", label = "Historical", co
     col_pal <- rev(RColorBrewer::brewer.pal(4, "Set3"))
   
   # pull out target rows with systems ordered according to MS
-  tmp <- as.matrix(x[seq_len(nx), c(4, 6, 5, 3, 2, 1)])
+  tmp <- as.matrix(x[seq_len(nx), c(4, 1, 6, 3, 2, 5)])
   sys_names <- colnames(tmp)
   rownames(tmp) <- seq_len(nx)
   colnames(tmp) <- seq_len(ncol(tmp))
@@ -360,8 +353,8 @@ plot_spp_summary <- function(x, nx = 15, clim = "1975", label = "Historical", co
     "king" = "King River",
     "goulburn" = "Goulburn River"
   )
-  axis(3, at = seq(0, 1, length = ncol(tmp)), labels = legend_text[sys_names], tick = FALSE, padj = 1)
-  axis(3, at = c(-10, 10), labels = c("", ""), las = 1, lwd.ticks = 0)
+  axis(1, at = seq(0, 1, length = ncol(tmp)), labels = legend_text[sys_names], tick = FALSE, padj = -0.5)
+  axis(1, at = c(-10, 10), labels = c("", ""), las = 1, lwd.ticks = 0)
   
   # add EMPS/Ne values
   values <- cbind(x[, target1][seq_len(nx)], x[, target2][seq_len(nx)])
@@ -370,7 +363,7 @@ plot_spp_summary <- function(x, nx = 15, clim = "1975", label = "Historical", co
   text(x = c(1.2, 1.3), y = 1 + 0.11, c("EMPS", "Ne"), xpd = TRUE, font = 2)
   
   # add CC label  
-  mtext(label, side = 3, adj = 0, line = 1.6, cex = 1.2)
+  mtext(label, side = 3, adj = 0, line = 0.6, cex = 1.2)
   
   # return
   out <- NULL
@@ -421,8 +414,13 @@ get_spp_filtered <- function(x) {
 
 # sort estimates of emps/persistence by persistence then EMPS
 reorder_benefit <- function(x) {
-  out <- x[order(x$climate, x$persist, x$emps, decreasing = c(FALSE, TRUE, TRUE)), ]
-  out$emps <- round(out$emps)
+  if ("persist_mid" %in% colnames(x)) {
+    out <- x[order(x$climate, x$persist_mid, x$emps_mid, decreasing = c(FALSE, TRUE, TRUE)), ]
+    out$emps_mid <- round(out$emps_mid)
+  } else {
+    out <- x[order(x$climate, x$persist, x$emps, decreasing = c(FALSE, TRUE, TRUE)), ]
+    out$emps_mid <- round(out$emps)
+  }
   out
 }
 

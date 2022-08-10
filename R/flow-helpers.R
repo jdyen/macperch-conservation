@@ -710,25 +710,31 @@ impute_temperature <- function(data, target, site, latitude, longitude, response
 #   for the Yarra River
 add_environmental_water <- function(x, date, system = "yarra") {
   
-  # id each month and year
-  month_id <- month(date)
-  year_id <- year(date)
-  
-  # loop over each year (skip first because working with
-  #   water years and will lag below)
-  unique_years <- unique(year_id)[-1]
-  for (i in seq_along(unique_years)) {
+  # only do this if system is Yarra or Goulburn,
+  #   otherwise return x unchanged
+  if (system %in% c("yarra", "goulburn")) {
     
-    # subset to correct year/month combos (shifted water year, starting in June)
-    idx <- (year_id == (unique_years[i] - 1) & month_id %in% c(6:12)) |
-      (year_id == unique_years[i] & month_id %in% c(1:5))
+    # id each month and year
+    month_id <- month(date)
+    year_id <- year(date)
     
-    # update with env watering plans
-    x[idx] <- add_environmental_water_annual(
-      x = x[idx],
-      month_id = month_id[idx],
-      system = system
-    )
+    # loop over each year (skip first because working with
+    #   water years and will lag below)
+    unique_years <- unique(year_id)[-1]
+    for (i in seq_along(unique_years)) {
+      
+      # subset to correct year/month combos (shifted water year, starting in June)
+      idx <- (year_id == (unique_years[i] - 1) & month_id %in% c(6:12)) |
+        (year_id == unique_years[i] & month_id %in% c(1:5))
+      
+      # update with env watering plans
+      x[idx] <- add_environmental_water_annual(
+        x = x[idx],
+        month_id = month_id[idx],
+        system = system
+      )
+      
+    }
     
   }
   

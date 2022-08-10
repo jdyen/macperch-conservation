@@ -342,9 +342,10 @@ for (i in seq_len(actions$n_required)) {
   # get settings based on actions
   sim_settings <- get_settings(
     actions = actions$actions[i, ],
-    discharge = discharge[[actions$site[i]]],
-    water_temperature = water_temp[[actions$site[i]]],
-    env_water = env_water[[actions$site[i]]],
+    date = discharge[[actions$site[i]]]$date_formatted,
+    discharge = discharge[[actions$site[i]]][[paste0("value_", actions$climate[i])]],
+    water_temperature = water_temp[[actions$site[i]]][[paste0("value_", actions$climate[i])]],
+    env_water = env_water[[actions$site[i]]][[paste0("value_", actions$climate[i])]],
     climate = actions$climate[i],
     site = actions$site[i],
     habitat = habitat_effect[actions$site[i]],
@@ -525,17 +526,17 @@ sims_to_plot <- list(
 )
 ylim_traj <- c(3500, 3000, 350, 2700, 700, 4000)
 png(file = paste0("outputs/figs/Fig2.png"),
-     height = (8 / 3) * 2.35,
+     height = 8,
      width = 8,
      res = 600,
      units = "in",
      pointsize = 12)
 layout(
-  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 3)), nrow = 3, byrow = TRUE),
-  heights = c(rep(1, length(sims_to_plot) / 3), 0.35)
+  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 2)), nrow = 4, byrow = TRUE),
+  heights = c(rep(1, length(sims_to_plot) / 2), 0.4)
 )
 par(mar = c(4.1, 4.8, 1.1, 1.1))
-col_pal <- RColorBrewer::brewer.pal(5, "Set1")
+col_pal <- RColorBrewer::brewer.pal(5, "Set2")
 for (i in seq_along(sims_to_plot)) {
   
   sim_plot <- list(
@@ -567,7 +568,7 @@ for (i in seq_along(sims_to_plot)) {
           2, 
           sum
         )
-        lines(yplot ~ xplot, lty = w, col = scales::alpha(col_pal[j], 0.05)) 
+        lines(yplot ~ xplot, lty = w, col = col_pal[j], lwd = 0.38) 
       }
       
       # add mean lines
@@ -580,7 +581,7 @@ for (i in seq_along(sims_to_plot)) {
         2,
         mean
       )
-      lines(ymean ~ xplot, col = col_pal[j], lty = w)
+      lines(ymean ~ xplot, col = col_pal[j], lty = w, lwd = 1.5)
       
     }
     
@@ -592,7 +593,7 @@ for (i in seq_along(sims_to_plot)) {
     plot(seq(0, 1, by = 0.1) ~ x,
          bty = "n", xlab = "", ylab = "",
          xaxt = "n", yaxt = "n", type = "n")
-    legend(x = 0.5, y = -0.2, 
+    legend(x = 0.5, y = -0.3, 
            ncol = 2,
            xpd = TRUE,
            legend = c("Historical: do nothing", "Post-1997: do nothing", "RCP8.5 low: do nothing", "RCP8.5 medium: do nothing", "RCP8.5 high: do nothing",
@@ -611,7 +612,7 @@ dev.off()
 sites_to_plot <- c("mitta", "yarra", "sevens", "ovens", "king", "goulburn")
 action_label <- c(
   "none" = "None*",
-  "gene_mixing" = "Assisted gene flow", 
+  "gene_mixing" = "Augmented gene flow", 
   "stocking" = "Stocking", 
   "stocking5" = "Stocking (5 years)", 
   "stocking10" = "Stocking (10 years)",
@@ -619,7 +620,7 @@ action_label <- c(
   "fishing_regulations" = "Fishing regulations",
   "habitat_restoration" = "Instream habitat",
   "env_water" = "Environmental water",
-  "exclude_exotic" = "Exclude exotic species"
+  "exclude_exotic" = "Exotic species control"
 )
 climate_label <- c("Post-1975", "Post-1997", "RCP8.5 low", "RCP8.5 medium", "RCP8.5 high")
 max_thresh <- c(4000, 4000, 50, 500, 250, 4000)
@@ -636,7 +637,7 @@ risk_sites <- c(
 # set up generic colour palette for all sites (that differ in actions)
 all_actions <- unique(c(actions$actions))
 all_actions <- all_actions[c(1:5, 7, 6, 8:9)]
-col_pal <- RColorBrewer::brewer.pal(length(all_actions), "Set3")
+col_pal <- RColorBrewer::brewer.pal(length(all_actions) + 1, "Set3")
 
 # and plot it
 for (i in seq_along(climates)) {
@@ -820,7 +821,7 @@ png(
 )
 layout(mat = cbind(c(1, 4, 7), c(2, 5, 7), c(3, 6, 7)), heights = c(rep(1, 2), 0.35))
 par(mar = c(4.1, 4.8, 2.1, 1.1))
-col_pal <- RColorBrewer::brewer.pal(6, "RdYlGn")
+col_pal <- RColorBrewer::brewer.pal(6, "Set2")
 
 # pull out formatted variable names
 formatted_var_name <- gsub("_", " ", var_names)
@@ -994,16 +995,19 @@ idx_info <- cbind(
 colnames(idx_info)[7:ncol(idx_info)] <- paste0(colnames(idx_info)[7:ncol(idx_info)], c("_1975", "_1975", "_1997", "_1997", "_RCPlow", "_RCPlow", "_RCPmed", "_RCPmed", "_RCPhigh", "_RCPhigh"))
 idx_info <- idx_info[order(idx_info$emps_1975, decreasing = TRUE), ]
 
+# write all of this to a file
+write.csv(idx_info, "outputs/tables/tableS3.csv")
+
 # plot species summaries (main text)
-png(file = "outputs/figs/Fig5.png", width = 10, height = 7, units = "in", res = 600, pointsize = 12)
-par(mar = c(0.5, 3.1, 3.5, 8.1), mfrow = c(2, 1))
+png(file = "outputs/figs/Fig5.png", width = 10.5, height = 7, units = "in", res = 600, pointsize = 12)
+par(mar = c(2.5, 3.1, 2.5, 8.1), mfrow = c(2, 1))
 plot_spp_summary(idx_info, clim = "1975", label = "Historical")
 plot_spp_summary(idx_info, clim = "RCPmed", label = "RCP8.5 (medium)")
 dev.off()
 
 # plot species summaries (supp mat, all climates)
-png(file = "outputs/figs/FigS9.png", width = 40/3, height = 7, units = "in", res = 600, pointsize = 12)
-par(mar = c(0.5, 4.1, 3.5, 9.1), mfrow = c(3, 2))
+png(file = "outputs/figs/FigS9.png", width = 41.5/3, height = 7, units = "in", res = 600, pointsize = 12)
+par(mar = c(2.5, 4.1, 2.5, 9.1), mfrow = c(3, 2))
 cc_label <- c("Historical", "Post-1997", "RCP8.5 (low)", "RCP8.5 (medium)", "RCP8.5 (high)")
 cc_scen <- c("1975", "1997", "RCPlow", "RCPmed", "RCPhigh")
 for (i in seq_along(cc_scen))
@@ -1107,7 +1111,7 @@ for (i in seq_along(sites_to_plot)) {
 # set plot margins for legend panel and add legend
 action_label <- c(
   "pop_establish" = "Establish population",
-  "gene_mixing" = "Assisted gene flow", 
+  "gene_mixing" = "Augmented gene flow", 
   "stocking" = "Stocking", 
   "stocking5" = "Stocking (5 years)", 
   "stocking10" = "Stocking (10 years)",
@@ -1115,7 +1119,7 @@ action_label <- c(
   "fishing_regulations" = "Fishing regulations",
   "habitat_restoration" = "Instream habitat",
   "env_water" = "Environmental water",
-  "exclude_exotic" = "Exclude exotic species"
+  "exclude_exotic" = "Exotic species control"
 )
 par(mar = rep(0, 4))
 plot(c(0, 1) ~ 1, bty = "n", type = "n", xlab = "", ylab = "", xaxt = "n", yaxt = "n")
@@ -1222,17 +1226,17 @@ sims_to_plot <- list(
   goulburn = lapply(1:5, function(x) c(start_index[site_id == "goulburn"][x], end_index[site_id == "goulburn"][x]))
 )
 png(file = paste0("outputs/figs/FigS2.png"),
-    height = (8 / 3) * 2.35,
+    height = 8,
     width = 8,
     res = 600,
     units = "in",
     pointsize = 12)
 layout(
-  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 3)), nrow = 3, byrow = TRUE),
-  heights = c(rep(1, length(sims_to_plot) / 3), 0.35)
+  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 2)), nrow = 4, byrow = TRUE),
+  heights = c(rep(1, length(sims_to_plot) / 2), 0.4)
 )
 par(mar = c(4.1, 4.8, 1.1, 1.1))
-col_pal <- RColorBrewer::brewer.pal(5, "Set1")
+col_pal <- RColorBrewer::brewer.pal(5, "Set2")
 ylim_traj <- c(1500, 1200, 50, 1500, 350, 1800)
 for (i in seq_along(sims_to_plot)) {
   
@@ -1261,7 +1265,7 @@ for (i in seq_along(sims_to_plot)) {
       # plot trajectories
       for (k in traj_sub) {
         yplot <- sim_plot[[w]][k, xplot, 51]
-        lines(yplot ~ xplot, lty = w, col = scales::alpha(col_pal[j], 0.05)) 
+        lines(yplot ~ xplot, lty = w, col = col_pal[j], lwd = 0.38) 
       }
       
       # add mean lines
@@ -1278,7 +1282,7 @@ for (i in seq_along(sims_to_plot)) {
     plot(seq(0, 1, by = 0.1) ~ x,
          bty = "n", xlab = "", ylab = "",
          xaxt = "n", yaxt = "n", type = "n")
-    legend(x = 0.5, y = -0.2, 
+    legend(x = 0.5, y = -0.3, 
            ncol = 2,
            xpd = TRUE,
            legend = c("Historical: do nothing", "Post-1997: do nothing", "RCP8.5 low: do nothing", "RCP8.5 medium: do nothing", "RCP8.5 high: do nothing",
@@ -1293,19 +1297,20 @@ for (i in seq_along(sims_to_plot)) {
 # close plotting device
 dev.off()
 
+# repeat for old fish
 png(file = paste0("outputs/figs/FigS3.png"),
-    height = (8 / 3) * 2.35,
+    height = 8,
     width = 8,
     res = 600,
     units = "in",
     pointsize = 12)
 layout(
-  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 3)), nrow = 3, byrow = TRUE),
-  heights = c(rep(1, length(sims_to_plot) / 3), 0.35)
+  mat = matrix(c(seq_along(sims_to_plot), rep(length(sims_to_plot) + 1, 2)), nrow = 4, byrow = TRUE),
+  heights = c(rep(1, length(sims_to_plot) / 2), 0.4)
 )
 par(mar = c(4.1, 4.8, 1.1, 1.1))
-col_pal <- RColorBrewer::brewer.pal(5, "Set1")
-ylim_traj <- c(150, 120, 5, 150, 40, 150)
+col_pal <- RColorBrewer::brewer.pal(5, "Set2")
+ylim_traj <- c(165, 150, 5, 150, 40, 200)
 for (i in seq_along(sims_to_plot)) {
   
   sim_plot <- list(
@@ -1333,7 +1338,7 @@ for (i in seq_along(sims_to_plot)) {
       # plot trajectories
       for (k in traj_sub) {
         yplot <- sim_plot[[w]][k, xplot, 51]
-        lines(yplot ~ xplot, lty = w, col = scales::alpha(col_pal[j], 0.05)) 
+        lines(yplot ~ xplot, lty = w, col = col_pal[j], lwd = 0.38) 
       }
       
       # add mean lines
@@ -1350,7 +1355,7 @@ for (i in seq_along(sims_to_plot)) {
     plot(seq(0, 1, by = 0.1) ~ x,
          bty = "n", xlab = "", ylab = "",
          xaxt = "n", yaxt = "n", type = "n")
-    legend(x = 0.5, y = -0.2, 
+    legend(x = 0.5, y = -0.3, 
            ncol = 2,
            xpd = TRUE,
            legend = c("Historical: do nothing", "Post-1997: do nothing", "RCP8.5 low: do nothing", "RCP8.5 medium: do nothing", "RCP8.5 high: do nothing",
